@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f6b63">
+<title>Almacén</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#eef2f4;--ink:#14262b;--mute:#5d7077;--line:#cfd9dd;--card:#fff;--main:#0f6b63;--ok:#14733a;--err:#b3261e;
+--e1:#0f6b63;--e2:#c47a00;--e3:#3a5bb5;--e4:#a23b72}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Archivo,system-ui,sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;font-weight:800;margin:0}
+h2{font-size:1.2rem;font-weight:800;margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}
+label{display:block;font-size:.85rem;color:var(--mute);margin-bottom:4px}
+input,select,button{font:inherit;font-size:16px;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);width:100%}
+button{background:var(--main);color:#fff;border:0;font-weight:600;cursor:pointer}
+button.sec{background:#fff;color:var(--main);border:1px solid var(--main)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #8ad1c9;outline-offset:1px}
+.fila{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
+.msg{min-height:1.4em;margin:8px 0 0;font-weight:600}.ok{color:var(--ok)}.err{color:var(--err)}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px}
+.top button{width:auto}
+.scroll{overflow-x:auto;margin-top:14px}
+table{border-collapse:collapse;width:100%;font-size:.95rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-weight:600;font-size:.85rem}
+.agotado{color:var(--err);font-weight:600}
+.edificios{display:grid;grid-template-columns:1fr;gap:16px}
+@media(min-width:700px){.edificios{grid-template-columns:1fr 1fr}}
+.ed{border-left:8px solid var(--c);margin-bottom:0}
+.ed .fila{grid-template-columns:2fr 1fr}
+.ed ul{list-style:none;padding:0;margin:12px 0 0}
+.ed li{padding:6px 0;border-bottom:1px dashed var(--line)}
+.vacio{color:var(--mute)}
+#login{max-width:380px;margin:12vh auto 0}
+.acciones{display:flex;gap:10px;flex-wrap:wrap}.acciones button{width:auto}
+.hide{display:none!important}
+@media print{.noprint{display:none!important}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Pantalla de acceso -->
+<div id="login" class="card">
+  <h1>Almacén</h1>
+  <p class="vacio">Escribe tu usuario para entrar.</p>
+  <label for="usuario">Usuario</label>
+  <input id="usuario" autocomplete="username" autocapitalize="none">
+  <p style="margin:12px 0 0"><button onclick="entrar()">Entrar</button></p>
+  <p id="m-login" class="msg"></p>
+</div>
+
+<!-- Aplicación -->
+<div id="app" class="hide">
+  <div class="top noprint"><h1>Almacén</h1><div><span id="quien" class="vacio"></span> <button class="sec" onclick="salir()">Salir</button></div></div>
+
+  <section class="card noprint">
+    <h2>Agregar material al almacén</h2>
+    <div class="fila">
+      <div><label for="nombre">Nombre</label><input id="nombre" placeholder="Lápiz"></div>
+      <div><label for="cant">Unidades</label><input id="cant" type="number" min="1" inputmode="numeric" placeholder="6"></div>
+      <div><label for="tipo">Tipo</label>
+        <select id="tipo" onchange="$('tipo2').classList.toggle('hide',this.value!=='Otro')">
+          <option>Utensilio</option><option>Herramienta</option><option>Limpieza</option><option>Papelería</option><option>Otro</option>
+        </select></div>
+      <div id="tipo2" class="hide"><label for="tipoOtro">¿Qué tipo?</label><input id="tipoOtro"></div>
+      <div><label for="codigo">ID del objeto</label><input id="codigo" placeholder="1"></div>
+      <div><button onclick="agregar()">Agregar material</button></div>
+    </div>
+    <p id="m-add" class="msg"></p>
+    <h2 style="margin-top:12px">Disponible en el almacén</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Total</th><th>Disponible</th></tr></thead>
+      <tbody id="inv"></tbody>
+    </table></div>
+  </section>
+
+  <section class="edificios noprint" id="edificios"></section>
+
+  <section class="card" style="margin-top:16px">
+    <h2>Reporte semanal de consumo</h2>
+    <div class="fila noprint">
+      <div><label for="desde">Semana que empieza el</label><input id="desde" type="date" onchange="reporte()"></div>
+      <div class="acciones"><button class="sec" onclick="csv()">Descargar Excel (CSV)</button><button class="sec" onclick="window.print()">Imprimir</button></div>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Material</th><th>Edificio 1</th><th>Edificio 2</th><th>Edificio 3</th><th>Edificio 4</th><th>Total</th></tr></thead>
+      <tbody id="rep"></tbody>
+    </table></div>
+  </section>
+</div>
+</div>
+
+<script>
+// 1) Pega aquí los datos de tu proyecto (Supabase → Project Settings → API)
+const SUPABASE_URL = 'https://qydmqwqgbngbzwxjerht.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5ZG1xd3FnYm5nYnp3eGplcmh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxMzYxNDYsImV4cCI6MjEwODcxMjE0Nn0.a5zapd_E0FyyHgcqqtkkyGIUEryKnnlHOQQBwGJzO1c';
+
+const $ = id => document.getElementById(id);
+let db = null, errCfg = '';
+try{
+  if(typeof supabase === 'undefined') throw new Error('No cargó la librería de Supabase. Revisa tu internet y recarga con Ctrl + F5.');
+  if(SUPABASE_URL.includes('TU-PROYECTO') || SUPABASE_KEY.includes('TU-ANON')) throw new Error('Falta pegar tu URL y tu llave de Supabase al inicio del script.');
+  db = supabase.createClient(SUPABASE_URL.trim(), SUPABASE_KEY.trim());
+}catch(e){
+  errCfg = e.message;
+  $('m-login').textContent = 'Error de configuración: ' + errCfg;
+  $('m-login').className = 'msg err';
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let mats = [], asigs = [], rep = [];
+
+function msg(id, texto, ok = true){ const e = $(id); e.textContent = texto; e.className = 'msg ' + (ok ? 'ok' : 'err'); }
+const usado = id => asigs.filter(a => a.material_id === id).reduce((s, a) => s + a.cantidad, 0);
+const disp = m => m.cantidad - usado(m.id);
+
+/* ---------- Acceso ---------- */
+async function entrar(){
+  const u = $('usuario').value.trim().toLowerCase();
+  if(!db) return msg('m-login', 'Error de configuración: ' + errCfg, false);
+  if(!u) return msg('m-login', 'Escribe tu usuario', false);
+  const { data, error } = await db.from('usuarios').select('nombre').eq('nombre', u).maybeSingle();
+  if(error) return msg('m-login', 'No se pudo conectar: ' + error.message, false);
+  if(!data) return msg('m-login', 'Ese usuario no existe', false);
+  localStorage.setItem('usuario', data.nombre);
+  iniciar(data.nombre);
+}
+function salir(){ localStorage.removeItem('usuario'); location.reload(); }
+$('usuario').addEventListener('keydown', e => { if(e.key === 'Enter') entrar(); });
+
+function iniciar(nombre){
+  $('login').classList.add('hide'); $('app').classList.remove('hide');
+  $('quien').textContent = nombre;
+  $('edificios').innerHTML = [1,2,3,4].map(e => `
+    <div class="card ed" style="--c:var(--e${e})">
+      <h2>Edificio ${e}</h2>
+      <div class="fila">
+        <div><label for="sel${e}">Material</label><select id="sel${e}"></select></div>
+        <div><label for="n${e}">Cantidad</label><input id="n${e}" type="number" min="1" inputmode="numeric"></div>
+      </div>
+      <p style="margin:12px 0 0"><button onclick="asignar(${e})">Asignar al edificio ${e}</button></p>
+      <p id="m${e}" class="msg"></p>
+      <ul id="lista${e}"></ul>
+    </div>`).join('');
+  const l = new Date(); l.setHours(0,0,0,0); l.setDate(l.getDate() - ((l.getDay() + 6) % 7));
+  $('desde').value = l.toLocaleDateString('en-CA');
+  cargar();
+}
+
+/* ---------- Datos ---------- */
+async function cargar(){
+  const [m, a] = await Promise.all([
+    db.from('materiales').select('*').order('nombre'),
+    db.from('asignaciones').select('*')
+  ]);
+  if(m.error || a.error) return alert('Error al cargar: ' + (m.error || a.error).message);
+  mats = m.data; asigs = a.data; pintar();
+}
+
+function pintar(){
+  $('inv').innerHTML = mats.length ? mats.map(m => {
+    const d = disp(m);
+    return `<tr><td>${esc(m.codigo)}</td><td>${esc(m.nombre)}</td><td>${esc(m.tipo)}</td><td>${m.cantidad}</td><td class="${d ? '' : 'agotado'}">${d || 'Agotado'}</td></tr>`;
+  }).join('') : '<tr><td colspan="5" class="vacio">Agrega tu primer material arriba.</td></tr>';
+
+  for(let e = 1; e <= 4; e++){
+    const sel = $('sel' + e), v = sel.value;
+    sel.innerHTML = mats.map(m => `<option value="${m.id}">${esc(m.nombre)} (quedan ${disp(m)})</option>`).join('');
+    if(v) sel.value = v;
+    const g = {};
+    asigs.filter(a => a.edificio === e).forEach(a => g[a.material_id] = (g[a.material_id] || 0) + a.cantidad);
+    $('lista' + e).innerHTML = Object.entries(g).map(([id, c]) => {
+      const m = mats.find(x => x.id == id);
+      return `<li>${esc(m ? m.nombre : 'Material eliminado')}: <b>${c}</b></li>`;
+    }).join('') || '<li class="vacio">Sin materiales asignados.</li>';
+  }
+  reporte();
+}
+
+/* ---------- Agregar material ---------- */
+async function agregar(){
+  const nombre = $('nombre').value.trim(), codigo = $('codigo').value.trim(), cant = parseInt($('cant').value);
+  const tipo = $('tipo').value === 'Otro' ? $('tipoOtro').value.trim() : $('tipo').value;
+  if(!nombre || !codigo || !tipo || !(cant > 0)) return msg('m-add', 'Completa todos los campos (unidades: mínimo 1).', false);
+  const { error } = await db.from('materiales').insert({ codigo, nombre, tipo, cantidad: cant });
+  if(error) return msg('m-add', error.code === '23505' ? 'Ese ID ya existe. Usa otro ID.' : 'Error: ' + error.message, false);
+  msg('m-add', `“${nombre}” se agregó con éxito.`);
+  ['nombre','cant','codigo','tipoOtro'].forEach(i => $(i).value = '');
+  await cargar();
+}
+
+/* ---------- Asignar a edificio ---------- */
+async function asignar(e){
+  const id = +$('sel' + e).value, n = parseInt($('n' + e).value), m = mats.find(x => x.id === id);
+  if(!m) return msg('m' + e, 'Primero agrega un material al almacén.', false);
+  if(!(n > 0)) return msg('m' + e, 'Escribe una cantidad válida.', false);
+  if(n > disp(m)) return msg('m' + e, `Solo quedan ${disp(m)} de ${m.nombre}.`, false);
+  const { error } = await db.from('asignaciones').insert({ material_id: id, edificio: e, cantidad: n });
+  if(error) return msg('m' + e, error.message, false);
+  $('n' + e).value = '';
+  msg('m' + e, `Asignado: ${n} de ${m.nombre}.`);
+  await cargar();
+}
+
+/* ---------- Reporte semanal ---------- */
+function reporte(){
+  if(!$('desde').value) return;
+  const ini = new Date($('desde').value + 'T00:00:00'), fin = new Date(ini.getTime() + 7 * 864e5);
+  const f = asigs.filter(a => { const t = new Date(a.creado); return t >= ini && t < fin; });
+  rep = mats.map(m => {
+    const c = [1,2,3,4].map(e => f.filter(a => a.material_id === m.id && a.edificio === e).reduce((s, a) => s + a.cantidad, 0));
+    return { m, c, t: c.reduce((a, b) => a + b, 0) };
+  }).filter(r => r.t > 0);
+  const tot = [0,1,2,3].map(i => rep.reduce((s, r) => s + r.c[i], 0));
+  $('rep').innerHTML = rep.length
+    ? rep.map(r => `<tr><td>${esc(r.m.codigo)}</td><td>${esc(r.m.nombre)}</td>${r.c.map(x => `<td>${x}</td>`).join('')}<td><b>${r.t}</b></td></tr>`).join('')
+      + `<tr><td></td><td><b>Total</b></td>${tot.map(x => `<td><b>${x}</b></td>`).join('')}<td><b>${tot.reduce((a, b) => a + b, 0)}</b></td></tr>`
+    : '<tr><td colspan="7" class="vacio">No hubo asignaciones en esta semana.</td></tr>';
+}
+
+function csv(){
+  const filas = [['ID','Material','Edificio 1','Edificio 2','Edificio 3','Edificio 4','Total'],
+    ...rep.map(r => [r.m.codigo, r.m.nombre, ...r.c, r.t])];
+  const txt = '\ufeff' + filas.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv' }));
+  a.download = 'reporte-semanal-' + $('desde').value + '.csv';
+  a.click();
+}
+
+/* ---------- Sesión guardada ---------- */
+const guardado = localStorage.getItem('usuario');
+if(guardado && db) iniciar(guardado);
+</script>
+</body>
+</html>
