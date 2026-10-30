@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f6b63">
+<title>Almacén</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<style>
+:root{--bg:#eef2f4;--ink:#14262b;--mute:#5d7077;--line:#cfd9dd;--main:#0f6b63;--ok:#14733a;--err:#b3261e;--e1:#0f6b63;--e2:#c47a00;--e3:#3a5bb5;--e4:#a23b72}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Archivo,system-ui,sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;font-weight:800;margin:0}
+h2{font-size:1.2rem;font-weight:800;margin:0 0 12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}
+.card>button{margin-top:12px}
+label{display:block;font-size:.85rem;color:var(--mute);margin-bottom:4px}
+input,select,button{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);width:100%}
+button{background:var(--main);color:#fff;border:0;font-weight:600;cursor:pointer}
+button.sec{background:#fff;color:var(--main);border:1px solid var(--main)}
+:focus-visible{outline:3px solid #8ad1c9;outline-offset:1px}
+.fila{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
+.msg{min-height:1.4em;margin:8px 0 0;font-weight:600}.ok{color:var(--ok)}.err,.agotado{color:var(--err)}.agotado{font-weight:600}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px}
+.top button,.acciones button{width:auto}
+.acciones{display:flex;gap:10px;flex-wrap:wrap}
+.scroll{overflow-x:auto;margin-top:14px}
+table{border-collapse:collapse;width:100%;font-size:.95rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-weight:600;font-size:.85rem}
+.edificios{display:grid;grid-template-columns:1fr;gap:16px;margin-bottom:16px}
+@media(min-width:700px){.edificios{grid-template-columns:1fr 1fr}}
+.ed{border-left:8px solid var(--c);margin:0}
+.ed .fila{grid-template-columns:2fr 1fr}
+.ed ul{list-style:none;padding:0;margin:12px 0 0}
+.ed li{padding:6px 0;border-bottom:1px dashed var(--line)}
+.vacio{color:var(--mute)}
+#login{max-width:380px;margin:12vh auto 0}
+@media print{.noprint{display:none!important}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div id="login" class="card">
+  <h1>Almacén</h1>
+  <p class="vacio">Escribe tu usuario para entrar.</p>
+  <label for="usuario">Usuario</label>
+  <input id="usuario" autocomplete="username" autocapitalize="none" onkeydown="if(event.key==='Enter')entrar()">
+  <button onclick="entrar()">Entrar</button>
+  <p id="m-login" class="msg"></p>
+</div>
+
+<div id="app" hidden>
+  <div class="top noprint"><h1>Almacén</h1><div><span id="quien" class="vacio"></span> <button class="sec" onclick="salir()">Salir</button></div></div>
+
+  <section class="card noprint">
+    <h2>Agregar material al almacén</h2>
+    <div class="fila">
+      <div><label for="nombre">Nombre</label><input id="nombre" placeholder="Lápiz"></div>
+      <div><label for="cant">Unidades</label><input id="cant" type="number" min="1" inputmode="numeric" placeholder="6"></div>
+      <div><label for="tipo">Tipo</label>
+        <select id="tipo" onchange="$('tipo2').hidden=this.value!=='Otro'">
+          <option>Utensilio</option><option>Herramienta</option><option>Limpieza</option><option>Papelería</option><option>Otro</option>
+        </select></div>
+      <div id="tipo2" hidden><label for="tipoOtro">¿Qué tipo?</label><input id="tipoOtro"></div>
+      <div><button onclick="agregar()">Agregar material</button></div>
+    </div>
+    <p class="vacio" style="margin:10px 0 0">El ID se asigna solo: 1, 2, 3...</p>
+    <p id="m-add" class="msg"></p>
+    <h2 style="margin-top:12px">Disponible en el almacén</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Total</th><th>Disponible</th></tr></thead>
+      <tbody id="inv"></tbody>
+    </table></div>
+  </section>
+
+  <section class="edificios noprint" id="edificios"></section>
+
+  <section class="card">
+    <h2>Reporte semanal de consumo</h2>
+    <div class="fila noprint">
+      <div><label for="desde">Semana que empieza el</label><input id="desde" type="date" onchange="reporte()"></div>
+      <div class="acciones"><button class="sec" onclick="descargarExcel()">Descargar Excel</button><button class="sec" onclick="print()">Imprimir</button></div>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Material</th><th>Edificio 1</th><th>Edificio 2</th><th>Edificio 3</th><th>Edificio 4</th><th>Total</th></tr></thead>
+      <tbody id="rep"></tbody>
+    </table></div>
+  </section>
+</div>
+</div>
+
+<script>
+// Pega aquí los datos de tu proyecto de Supabase (entre las comillas)
+const SUPABASE_URL = 'https://qydmqwqgbngbzwxjerht.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5ZG1xd3FnYm5nYnp3eGplcmh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxMzYxNDYsImV4cCI6MjEwODcxMjE0Nn0.a5zapd_E0FyyHgcqqtkkyGIUEryKnnlHOQQBwGJzO1c';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => '&#' + c.charCodeAt(0) + ';');
+const sum = l => l.reduce((a, b) => a + b, 0);
+const msg = (id, texto, ok = true) => { $(id).textContent = texto; $(id).className = 'msg ' + (ok ? 'ok' : 'err'); };
+
+let db, mats = [], asigs = [];
+try {
+  if (SUPABASE_URL.includes('TU-PROYECTO')) throw new Error('falta pegar tu URL y tu llave arriba, al inicio del script.');
+  db = supabase.createClient(SUPABASE_URL.trim(), SUPABASE_KEY.trim());
+} catch (e) { msg('m-login', 'Error de configuración: ' + e.message, false); }
+
+// Unidades de un material asignadas (a un edificio o a todos) dentro de una lista de asignaciones
+const consumo = (m, e, lista = asigs) => sum(lista.filter(a => a.material_id === m.id && (!e || a.edificio === e)).map(a => a.cantidad));
+const disp = m => m.cantidad - consumo(m);
+
+/* ---------- Acceso ---------- */
+async function entrar() {
+  const u = $('usuario').value.trim().toLowerCase();
+  if (!db) return;                                   // el error de configuración ya está en pantalla
+  if (!u) return msg('m-login', 'Escribe tu usuario', false);
+  const { data, error } = await db.from('usuarios').select('nombre').eq('nombre', u).maybeSingle();
+  if (error || !data) return msg('m-login', error ? 'No se pudo conectar: ' + error.message : 'Ese usuario no existe', false);
+  localStorage.usuario = data.nombre;
+  iniciar(data.nombre);
+}
+function salir() { localStorage.removeItem('usuario'); location.reload(); }
+function iniciar(nombre) {
+  $('login').hidden = true; $('app').hidden = false; $('quien').textContent = nombre;
+  cargar();
+}
+
+/* ---------- Pantalla ---------- */
+$('edificios').innerHTML = [1, 2, 3, 4].map(e => `
+  <div class="card ed" style="--c:var(--e${e})">
+    <h2>Edificio ${e}</h2>
+    <div class="fila">
+      <div><label for="sel${e}">Material</label><select id="sel${e}"></select></div>
+      <div><label for="n${e}">Cantidad</label><input id="n${e}" type="number" min="1" inputmode="numeric"></div>
+    </div>
+    <button onclick="asignar(${e})">Asignar al edificio ${e}</button>
+    <p id="m${e}" class="msg"></p>
+    <ul id="lista${e}"></ul>
+  </div>`).join('');
+
+const lunes = new Date(); lunes.setDate(lunes.getDate() - (lunes.getDay() + 6) % 7);
+$('desde').value = lunes.toLocaleDateString('en-CA');
+
+async function cargar() {
+  const [m, a] = await Promise.all([db.from('materiales').select('*').order('id'), db.from('asignaciones').select('*')]);
+  if (m.error || a.error) return alert('Error al cargar: ' + (m.error || a.error).message);
+  mats = m.data; asigs = a.data;
+  pintar();
+}
+
+function pintar() {
+  $('inv').innerHTML = mats.map(m => {
+    const d = disp(m);
+    return `<tr><td>${m.id}</td><td>${esc(m.nombre)}</td><td>${esc(m.tipo)}</td><td>${m.cantidad}</td><td class="${d ? '' : 'agotado'}">${d || 'Agotado'}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="vacio">Agrega tu primer material arriba.</td></tr>';
+
+  for (let e = 1; e <= 4; e++) {
+    const sel = $('sel' + e), v = sel.value;
+    sel.innerHTML = mats.map(m => `<option value="${m.id}">${m.id}. ${esc(m.nombre)} (quedan ${disp(m)})</option>`).join('');
+    if (v) sel.value = v;
+    $('lista' + e).innerHTML = mats.filter(m => consumo(m, e)).map(m => `<li>${esc(m.nombre)}: <b>${consumo(m, e)}</b></li>`).join('')
+      || '<li class="vacio">Sin materiales asignados.</li>';
+  }
+  reporte();
+}
+
+/* ---------- Agregar material y asignar a edificios ---------- */
+async function agregar() {
+  const nombre = $('nombre').value.trim(), cant = parseInt($('cant').value);
+  const tipo = $('tipo').value === 'Otro' ? $('tipoOtro').value.trim() : $('tipo').value;
+  if (!nombre || !tipo || !(cant > 0)) return msg('m-add', 'Completa todos los campos (unidades: mínimo 1).', false);
+  const { data, error } = await db.from('materiales').insert({ nombre, tipo, cantidad: cant }).select('id').single();
+  if (error) return msg('m-add', 'Error: ' + error.message, false);
+  msg('m-add', `“${nombre}” se agregó con éxito. Su ID es ${data.id}.`);
+  ['nombre', 'cant', 'tipoOtro'].forEach(i => $(i).value = '');
+  cargar();
+}
+
+async function asignar(e) {
+  const m = mats.find(x => x.id === +$('sel' + e).value), n = parseInt($('n' + e).value);
+  if (!m) return msg('m' + e, 'Primero agrega un material al almacén.', false);
+  if (!(n > 0)) return msg('m' + e, 'Escribe una cantidad válida.', false);
+  if (n > disp(m)) return msg('m' + e, `Solo quedan ${disp(m)} de ${m.nombre}.`, false);
+  const { error } = await db.from('asignaciones').insert({ material_id: m.id, edificio: e, cantidad: n });
+  if (error) return msg('m' + e, error.message, false);
+  $('n' + e).value = '';
+  msg('m' + e, `Asignado: ${n} de ${m.nombre}.`);
+  cargar();
+}
+
+/* ---------- Reporte semanal (pantalla y Excel usan los mismos datos) ---------- */
+function semana() {
+  const ini = new Date($('desde').value + 'T00:00:00'), fin = new Date(+ini + 7 * 864e5);
+  const lista = asigs.filter(a => { const t = new Date(a.creado); return t >= ini && t < fin; });
+  const filas = mats.map(m => { const c = [1, 2, 3, 4].map(e => consumo(m, e, lista)); return [m.id, m.nombre, ...c, sum(c)]; })
+    .filter(f => f[6] > 0);
+  return { ini, filas, pie: ['', 'Total', ...[2, 3, 4, 5, 6].map(i => sum(filas.map(f => f[i])))] };
+}
+
+function reporte() {
+  if (!$('desde').value) return;
+  const { filas, pie } = semana();
+  const tr = (f, negrita) => '<tr>' + f.map((x, i) => {
+    x = i === 1 ? esc(x) : x;
+    return `<td>${negrita || i === 6 ? `<b>${x}</b>` : x}</td>`;
+  }).join('') + '</tr>';
+  $('rep').innerHTML = filas.length ? filas.map(f => tr(f)).join('') + tr(pie, true)
+    : '<tr><td colspan="7" class="vacio">No hubo asignaciones en esta semana.</td></tr>';
+}
+
+async function descargarExcel() {
+  if (typeof ExcelJS === 'undefined') return alert('No cargó la herramienta de Excel. Revisa tu internet y recarga con Ctrl + F5.');
+  const { ini, filas, pie } = semana();
+  if (!filas.length) return alert('No hay consumo en esta semana para descargar.');
+  const fecha = d => d.toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('Reporte semanal');
+  ws.columns = [8, 30, 14, 14, 14, 14, 12].map(width => ({ width }));
+  ws.mergeCells('A1:G1'); ws.mergeCells('A2:G2');
+  ws.getCell('A1').value = 'Reporte semanal de consumo';
+  ws.getCell('A1').font = { size: 16, bold: true, color: { argb: 'FF0F6B63' } };
+  ws.getCell('A2').value = 'Semana del ' + fecha(ini) + ' al ' + fecha(new Date(+ini + 6 * 864e5));
+  ws.getCell('A2').font = { color: { argb: 'FF5D7077' } };
+
+  const borde = { style: 'thin', color: { argb: 'FFCFD9DD' } };
+  const todo = [['ID', 'Material', 'Edificio 1', 'Edificio 2', 'Edificio 3', 'Edificio 4', 'Total'], ...filas, pie];
+  todo.forEach((valores, i) => {
+    const cab = i === 0, ultima = i === todo.length - 1, fila = ws.getRow(4 + i);
+    fila.values = valores;
+    fila.eachCell({ includeEmpty: true }, (c, n) => {
+      c.border = { top: borde, left: borde, bottom: borde, right: borde };
+      c.alignment = { vertical: 'middle', horizontal: n === 2 ? 'left' : 'center' };
+      c.font = { bold: cab || ultima || n === 7, color: { argb: cab ? 'FFFFFFFF' : 'FF14262B' } };
+      const fondo = cab ? 'FF0F6B63' : ultima ? 'FFDDEBE9' : i % 2 ? null : 'FFF3F7F8';
+      if (fondo) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fondo } };
+    });
+  });
+  ws.getRow(4).height = 24;
+  ws.views = [{ state: 'frozen', ySplit: 4 }];
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([await wb.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = 'reporte-semanal-' + $('desde').value + '.xlsx';
+  a.click();
+}
+
+/* ---------- Sesión guardada ---------- */
+if (localStorage.usuario && db) iniciar(localStorage.usuario);
+</script>
+</body>
+</html>
